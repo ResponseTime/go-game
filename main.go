@@ -4,8 +4,10 @@ import (
 	"image/color"
 	"log"
 	"math/rand"
+	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
@@ -68,27 +70,41 @@ func getRandomColors(n int) []color.Color {
 
 var randomColors = getRandomColors(20)
 var cube = Cube{
-	origin_x:   100,
-	origin_y:   0,
-	width:      100,
-	height:     100,
-	velocity_x: float32(rand.Intn(5) + 1),
+	origin_x:   0,
+	origin_y:   550,
+	width:      50,
+	height:     50,
+	velocity_x: 15,
 	velocity_y: float32(rand.Intn(5) + 1),
 	color:      randomColors[rand.Intn(20)],
 	antialias:  true,
 }
 
-var cubeOpp = Cube{
-	origin_x:   600,
+var obstacle = Cube{
+	origin_x:   float32(rand.Intn(900)),
 	origin_y:   0,
-	width:      100,
+	width:      50,
 	height:     100,
-	velocity_x: float32(rand.Intn(5) + 1),
+	velocity_x: 20,
 	velocity_y: float32(rand.Intn(5) + 1),
 	color:      randomColors[rand.Intn(20)],
 	antialias:  true,
 }
+var gameOver bool
+var obstacles []Cube
+var score int
 
+func createRandomObstacle() Cube {
+	return Cube{
+		origin_x:   float32(rand.Intn(850)),
+		origin_y:   0,
+		width:      50,
+		height:     100,
+		velocity_y: float32(rand.Intn(3) + 2),
+		color:      randomColors[rand.Intn(len(randomColors))],
+		antialias:  true,
+	}
+}
 func (g *Game) Update() error {
 	// now := time.Now().UnixMilli()
 	// if now-timer > ms && IND < len(toShow) {
@@ -96,49 +112,48 @@ func (g *Game) Update() error {
 	// 	IND++
 	// 	timer = now
 	// }
-	if cubeOpp.origin_x+cubeOpp.width+cubeOpp.velocity_x >= 900 || cubeOpp.origin_x+cubeOpp.velocity_x <= 0 {
-		cubeOpp.color = randomColors[rand.Intn(20)]
-		cubeOpp.velocity_x = -cubeOpp.velocity_x
+	if gameOver {
+		return nil
 	}
-	if cube.origin_x+cube.width+cube.velocity_x >= 900 || cube.origin_x+cube.velocity_x <= 0 {
-		cube.color = randomColors[rand.Intn(20)]
-		cube.velocity_x = -cube.velocity_x
+	if ebiten.IsKeyPressed(ebiten.KeyD) {
+		if cube.origin_x+cube.width+cube.velocity_x > 900 {
+			cube.origin_x = 850
+		} else {
+			cube.origin_x += cube.velocity_x
+		}
 	}
-
-	if cube.origin_y+cube.height+cube.velocity_y >= 600 || cube.origin_y+cube.velocity_y <= 0 {
-		cube.color = randomColors[rand.Intn(20)]
-		cube.velocity_y = -cube.velocity_y
+	if ebiten.IsKeyPressed(ebiten.KeyA) {
+		cube.origin_x -= cube.velocity_x
+		if cube.origin_x < 0 {
+			cube.origin_x = 0
+		}
 	}
-
-	if cubeOpp.origin_y+cubeOpp.height+cubeOpp.velocity_y >= 600 || cubeOpp.origin_y+cubeOpp.velocity_y <= 0 {
-		cubeOpp.color = randomColors[rand.Intn(20)]
-		cubeOpp.velocity_y = -cubeOpp.velocity_y
+	for i := range obstacles {
+		obstacles[i].origin_y += obstacles[i].velocity_y
+		if obstacles[i].origin_y > 600 {
+			obstacles[i] = createRandomObstacle()
+			score += 1
+		}
+		if cube.doesIntersect(obstacles[i]) {
+			gameOver = true
+		}
 	}
-
-	if cube.doesIntersect(cubeOpp) {
-		cube.width -= 1
-		cube.height -= 1
-
-		cubeOpp.width -= 1
-		cubeOpp.height -= 1
-
-		cube.velocity_y = -cube.velocity_y
-		cubeOpp.velocity_y = -cubeOpp.velocity_y
-		cube.velocity_x = -cube.velocity_x
-		cubeOpp.velocity_x = -cubeOpp.velocity_x
-	}
-
-	cube.origin_x += cube.velocity_x
-	cube.origin_y += cube.velocity_y
-	cubeOpp.origin_x += cubeOpp.velocity_x
-	cubeOpp.origin_y += cubeOpp.velocity_y
+	obstacle.origin_y += obstacle.velocity_y
 	return nil
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	// ebitenutil.DebugPrint(screen, msg)
+	if gameOver {
+		ebitenutil.DebugPrint(screen, "Game over")
+		ebitenutil.DebugPrintAt(screen, strconv.Itoa(score), 870, 0)
+		return
+	}
+	ebitenutil.DebugPrintAt(screen, strconv.Itoa(score), 870, 0)
 	vector.DrawFilledRect(screen, cube.origin_x, cube.origin_y, cube.width, cube.height, cube.color, cube.antialias)
-	vector.DrawFilledRect(screen, cubeOpp.origin_x, cubeOpp.origin_y, cubeOpp.width, cubeOpp.height, cubeOpp.color, cube.antialias)
+	for _, o := range obstacles {
+		vector.DrawFilledRect(screen, o.origin_x, o.origin_y, o.width, o.height, o.color, o.antialias)
+	}
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
@@ -146,8 +161,11 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 }
 
 func main() {
+	for i := 0; i < 5; i++ {
+		obstacles = append(obstacles, createRandomObstacle())
+	}
 	ebiten.SetWindowSize(900, 600)
-	ebiten.SetWindowTitle("Bouncer")
+	ebiten.SetWindowTitle("Stars falling")
 	if err := ebiten.RunGame(&Game{}); err != nil {
 		log.Fatal(err)
 	}
